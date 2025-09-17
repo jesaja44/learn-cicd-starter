@@ -3,9 +3,7 @@ package main
 import (
 	"database/sql"
 	"embed"
-	"io"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/go-chi/chi"
