@@ -38,7 +38,8 @@ jobs:
       - name: Check formatting (fails if unformatted)
         run: |
           echo "Running go fmt..."
-          go fmt ./...
-          echo "Now enforcing empty output:"
-          test -z "$(go fmt ./...)"
+          FILES=$(go fmt ./...)
+          echo "Go fmt changed these files:"
+          echo "$FILES"
+          test -z "$FILES"
 
