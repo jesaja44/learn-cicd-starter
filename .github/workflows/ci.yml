@@ -1,9 +1,8 @@
+
 name: ci
 
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:
 
@@ -11,6 +10,7 @@ jobs:
   tests:
     name: Tests
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -20,12 +20,13 @@ jobs:
         with:
           go-version: "1.25.1"
 
-      - name: Run tests (with coverage)
+      - name: Run tests with coverage
         run: go test -cover ./...
 
   style:
     name: Style
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -35,8 +36,5 @@ jobs:
         with:
           go-version: "1.25.1"
 
-      - name: Check formatting (fails if unformatted)
-        # go fmt gibt geänderte Dateien auf stdout aus
-        # test -z ... -> exit 0 wenn leer (alles formatiert), sonst 1
-        run: test -z "$(go fmt ./...)"
-
+      - name: Check formatting
+        run: test -z $(go fmt ./...)
