@@ -36,7 +36,9 @@ jobs:
           go-version: "1.25.1"
 
       - name: Check formatting (fails if unformatted)
-        # go fmt gibt geänderte Dateien auf stdout aus
-        # test -z ... -> exit 0 wenn leer (alles formatiert), sonst 1
-        run: test -z "$(go fmt ./...)"
+        run: |
+          echo "Running go fmt..."
+          go fmt ./...
+          echo "Now enforcing empty output:"
+          test -z "$(go fmt ./...)"
 
