@@ -3,7 +3,9 @@ package main
 import (
 	"database/sql"
 	"embed"
+	"io" // <— wieder hinzufügen
 	"log"
+	"net/http" // <— wieder hinzufügen
 	"os"
 
 	"github.com/go-chi/chi"
