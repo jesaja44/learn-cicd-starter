@@ -13,13 +13,13 @@ func (cfg *apiConfig) middlewareAuth(handler authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		apiKey, err := auth.GetAPIKey(r.Header)
 		if err != nil {
-			respondWithError(w, http.StatusUnauthorized, "Couldn't find api key", err)
+			respondWithError(w, http.StatusUnauthorized, "Couldn't find api key: "+err.Error())
 			return
 		}
 
 		user, err := cfg.DB.GetUser(r.Context(), apiKey)
 		if err != nil {
-			respondWithError(w, http.StatusNotFound, "Couldn't get user", err)
+			respondWithError(w, http.StatusNotFound, "Couldn't get user: "+err.Error())
 			return
 		}
 
