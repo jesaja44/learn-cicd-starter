@@ -3,8 +3,6 @@ name: ci
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -14,12 +12,10 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.25.1"
-
       - name: Run tests (with coverage)
         run: go test -cover ./...
 
@@ -29,26 +25,14 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.25.1"
-
       - name: Check formatting (fails if unformatted)
-        run: |
-          echo "Running go fmt..."
-          FILES=$(go fmt ./...)
-          echo "Go fmt changed these files:"
-          echo "$FILES"
-          test -z "$FILES"
-
- # Install staticcheck
+        run: test -z "$(go fmt ./...)"
       - name: Install staticcheck
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      # Run staticcheck on all packages
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - name: Run staticcheck
         run: staticcheck ./...
+
