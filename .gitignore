@@ -3,3 +3,7 @@ out
 learn-cicd-starter
 notely
 *.bak
+.DS_Store
+internal/.DS_Store
+sql/.DS_Store
+vendor/.DS_Store

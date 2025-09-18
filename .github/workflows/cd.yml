@@ -1,0 +1,38 @@
+name: CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Make build script executable
+        run: chmod +x scripts/buildprod.sh
+
+      - name: Build production binary
+        run: ./scripts/buildprod.sh
+
+      - name: Show build output
+        run: |
+          ls -lh notely || true
+          file notely || true
+
+      - name: Upload notely artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notely-linux
+          path: notely
+
