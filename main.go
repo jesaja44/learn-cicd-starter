@@ -3,10 +3,11 @@ package main
 import (
 	"database/sql"
 	"embed"
-	"io" // <— wieder hinzufügen
+	"io"
 	"log"
-	"net/http" // <— wieder hinzufügen
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/cors"
@@ -25,8 +26,8 @@ type apiConfig struct {
 var staticFiles embed.FS
 
 func main() {
-	err := godotenv.Load(".env")
-	if err != nil {
+	// .env ist optional – bei Fehler nur warnen und weitermachen
+	if err := godotenv.Load(".env"); err != nil {
 		log.Printf("warning: assuming default configuration. .env unreadable: %v", err)
 	}
 
@@ -34,10 +35,10 @@ func main() {
 	if port == "" {
 		log.Fatal("PORT environment variable is not set")
 	}
+
 	apiCfg := apiConfig{}
 
-	// https://github.com/libsql/libsql-client-go/#open-a-connection-to-sqld
-	// libsql://[your-database].turso.io?authToken=[your-auth-token]
+	// Optional: DB verbinden, wenn DATABASE_URL gesetzt ist
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Println("DATABASE_URL environment variable is not set")
@@ -47,13 +48,12 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		dbQueries := database.New(db)
-		apiCfg.DB = dbQueries
+		apiCfg.DB = database.New(db)
 		log.Println("Connected to database!")
 	}
 
+	// Router + CORS
 	router := chi.NewRouter()
-
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -63,35 +63,54 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Root: index.html aus embed FS ausliefern
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		f, err := staticFiles.Open("static/index.html")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "index.html not found", http.StatusInternalServerError)
 			return
 		}
 		defer f.Close()
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if _, err := io.Copy(w, f); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("write response failed: %v", err)
 		}
 	})
 
-	v1Router := chi.NewRouter()
+	// --- v1 API Routen ---
+	v1 := chi.NewRouter()
 
-	if apiCfg.DB != nil {
-		v1Router.Post("/users", apiCfg.handlerUsersCreate)
-		v1Router.Get("/users", apiCfg.middlewareAuth(apiCfg.handlerUsersGet))
-		v1Router.Get("/notes", apiCfg.middlewareAuth(apiCfg.handlerNotesGet))
-		v1Router.Post("/notes", apiCfg.middlewareAuth(apiCfg.handlerNotesCreate))
-	}
+	// Readiness (freie Funktion: (w, r))
+	v1.Get("/ready", handlerReadiness)
 
-	v1Router.Get("/healthz", handlerReadiness)
+	// Users:
+	// - Create: (w, r) -> direkt
+	// - Get:    (w, r, user) -> über Auth-Middleware
+	v1.Post("/users", apiCfg.handlerUsersCreate)
+	v1.Get("/users", apiCfg.middlewareAuth(apiCfg.handlerUsersGet))
 
-	router.Mount("/v1", v1Router)
+	// Notes: beide (w, r, user) -> über Auth-Middleware
+	v1.Group(func(r chi.Router) {
+		r.Get("/notes", apiCfg.middlewareAuth(apiCfg.handlerNotesGet))
+		r.Post("/notes", apiCfg.middlewareAuth(apiCfg.handlerNotesCreate))
+	})
+
+	// Unterpfad mounten
+	router.Mount("/v1", v1)
+
+	// HTTP-Server mit Timeouts (Slowloris-/Ressourcenschutz)
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: router,
+		Addr:              ":" + port,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,  // wichtig gegen Slowloris
+		ReadTimeout:       15 * time.Second, // optional
+		WriteTimeout:      15 * time.Second, // optional
+		IdleTimeout:       60 * time.Second, // optional
 	}
 
-	log.Printf("Serving on port: %s\n", port)
-	log.Fatal(srv.ListenAndServe())
+	log.Printf("listening on :%s", port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }
