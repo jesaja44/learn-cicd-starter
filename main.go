@@ -96,6 +96,3 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
-	// unusedHelper is intentionally unused to trigger staticcheck U1000.
-	func unusedHelper() int {
-		return 42		
