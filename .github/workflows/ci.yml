@@ -43,3 +43,12 @@ jobs:
           echo "$FILES"
           test -z "$FILES"
 
+ # Install staticcheck
+      - name: Install staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # Run staticcheck on all packages
+      - name: Run staticcheck
+        run: staticcheck ./...
