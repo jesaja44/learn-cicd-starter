@@ -3,6 +3,7 @@ name: CD
 on:
   push:
     branches: [ main ]
+  workflow_dispatch: {}
 
 jobs:
   deploy:
@@ -13,6 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Go einrichten, damit dein buildprod.sh die Binary 'notely' baut
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -30,9 +32,46 @@ jobs:
           ls -lh notely || true
           file notely || true
 
+      # Artefakt (Binary) hochladen – optional, aber praktisch
       - name: Upload notely artifact
         uses: actions/upload-artifact@v4
         with:
           name: notely-linux
           path: notely
+
+      # ---- Docker Build & Push zu Docker Hub ----
+
+      # Multi-Arch vorbereiten (falls du im Dockerfile KEIN festes --platform gesetzt hast)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract short SHA
+        id: meta
+        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      # Wenn dein Dockerfile KEIN festes '--platform=linux/amd64' enthält,
+      # kannst du linux/amd64,linux/arm64 bauen. Falls DOCH, setze 'platforms: linux/amd64'.
+      - name: Build and Push (Docker Hub)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Wähle EINE der folgenden Zeilen:
+          # 1) Wenn Dockerfile KEIN festes --platform hat:
+          platforms: linux/amd64,linux/arm64
+          # 2) Wenn Dockerfile fest --platform=linux/amd64 hat, nutze stattdessen:
+          # platforms: linux/amd64
+          tags: |
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/notely:latest
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/notely:${{ steps.meta.outputs.TAG }}
 
