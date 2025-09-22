@@ -11,16 +11,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --- Code auschecken ---
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Go einrichten, damit dein buildprod.sh die Binary 'notely' baut
+      # --- Go einrichten (für deinen Buildscript) ---
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
+      # --- Buildscript ausführbar machen & Binary bauen ---
       - name: Make build script executable
         run: chmod +x scripts/buildprod.sh
 
@@ -32,16 +34,14 @@ jobs:
           ls -lh notely || true
           file notely || true
 
-      # Artefakt (Binary) hochladen – optional, aber praktisch
+      # --- Artefakt weglegen (optional, aber praktisch) ---
       - name: Upload notely artifact
         uses: actions/upload-artifact@v4
         with:
           name: notely-linux
           path: notely
 
-      # ---- Docker Build & Push zu Docker Hub ----
-
-      # Multi-Arch vorbereiten (falls du im Dockerfile KEIN festes --platform gesetzt hast)
+      # --- Docker Build & Push zu Docker Hub (ohne GCP nötig) ---
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -56,22 +56,62 @@ jobs:
 
       - name: Extract short SHA
         id: meta
-        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # Wenn dein Dockerfile KEIN festes '--platform=linux/amd64' enthält,
-      # kannst du linux/amd64,linux/arm64 bauen. Falls DOCH, setze 'platforms: linux/amd64'.
+      # Tipp: Wenn dein Dockerfile strikt linux/amd64 erwartet, nimm nur amd64.
+      # Multi-Arch ist optional; hier konservativ nur amd64 für Stabilität.
       - name: Build and Push (Docker Hub)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          # Wähle EINE der folgenden Zeilen:
-          # 1) Wenn Dockerfile KEIN festes --platform hat:
-          platforms: linux/amd64,linux/arm64
-          # 2) Wenn Dockerfile fest --platform=linux/amd64 hat, nutze stattdessen:
-          # platforms: linux/amd64
+          platforms: linux/amd64
           tags: |
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/notely:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/notely:${{ steps.meta.outputs.TAG }}
+
+      # ---------------------------
+      #   Cloud Run Deploy (GUARDED)
+      #   -> wird NUR ausgeführt,
+      #      wenn GCP Secrets existieren
+      # ---------------------------
+
+      - name: Auth to Google Cloud
+        if: ${{ secrets.GCP_PROJECT_ID != '' && secrets.GCP_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        if: ${{ secrets.GCP_PROJECT_ID != '' && secrets.GCP_SA_KEY != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # Falls du später auf Artifact Registry pushst, kannst du diese Zeile aktivieren:
+      # - name: Configure Docker for Artifact Registry
+      #   if: ${{ secrets.GCP_PROJECT_ID != '' && secrets.GCP_SA_KEY != '' }}
+      #   run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Deploy to Cloud Run
+        if: ${{ secrets.GCP_PROJECT_ID != '' && secrets.GCP_SA_KEY != '' }}
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: us-central1
+          # Wenn du später auf Artifact Registry pushst, setze deine echte Image-URL hier:
+          # IMAGE_URL: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/notely/notely:latest
+          #
+          # Übergangsweise könntest du (nicht empfohlen) auch ein Docker-Hub-Image angeben,
+          # aber der empfohlene Weg ist AR. Wir lassen es hier als Platzhalter:
+          IMAGE_URL: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/notely/notely:latest
+        run: |
+          echo "Deploying $IMAGE_URL to Cloud Run in $REGION (project: $PROJECT_ID)"
+          gcloud run deploy notely \
+            --image "$IMAGE_URL" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --project "$PROJECT_ID" \
+            --max-instances=4 \
+            --ingress=all
 
